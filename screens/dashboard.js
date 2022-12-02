@@ -1,5 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {useEffect} from 'react';
 import {useState} from 'react';
-
 import {
   Image,
   Pressable,
@@ -9,12 +10,39 @@ import {
   TextInput,
   View,
   FlatList,
+  Alert,
 } from 'react-native';
 import {Rating} from 'react-native-ratings';
 import Icon from 'react-native-vector-icons/Ionicons';
+import {AddFav, home} from '../utility/database';
+import {Loader} from '../utility/loader';
 
-function Dashboard() {
+function Dashboard({navigation}) {
+  const [isLoggedin, setisLoggedin] = useState(false);
+  // console.log(isLoggedin);
+
   const [text, settext] = useState('');
+  const [apiData, setApiData] = useState({
+    popular: [],
+    premium: [],
+    metro_city: [],
+  });
+  const [user, setuser] = useState({
+    user_id: '',
+  });
+
+  // console.log(apiData.premium);
+
+  useEffect(() => {
+    AsyncStorage.getItem('user').then(res => setuser({user_id: res}));
+
+    home().then(x => {
+      if (x.status) {
+        setisLoggedin(true);
+        setApiData(x.data);
+      }
+    });
+  }, []);
 
   const IST = new Date().toDateString();
   const ISTDate = `${IST.slice(8, 10)}-${IST.slice(4, 8).trim()}-${IST.slice(
@@ -23,50 +51,84 @@ function Dashboard() {
   )}`;
   // console.log(ISTDate);
 
-  const image = [
-    '../testimage/test1.jpg',
-    '../testimage/test2.jpg',
-    '../testimage/test3.jpg',
-    '../testimage/test1.jpg',
-    '../testimage/test2.jpg',
-    '../testimage/test2.jpg',
-    '../testimage/test3.jpg',
-    '../testimage/test1.jpg',
-    '../testimage/test2.jpg',
-    '../testimage/test3.jpg',
-  ];
+  function locationbar({item}) {
+    // console.log(item.name);
 
-  function locationbar(data) {
     return (
       <View style={styles.locationbar}>
-        <Image
-          style={styles.circle}
-          resizeMode="contain"
-          source={require('../testimage/56.png')}
-        />
-        <Text style={styles.locationbartext}>city-name</Text>
+        <Pressable
+          onPress={() => navigation.navigate('PLACE', {name: item.name})}>
+          <Image
+            style={styles.circle}
+            resizeMode="center"
+            source={{uri: item.image}}
+          />
+        </Pressable>
+        <Text style={styles.locationbartext}>{item.name}</Text>
       </View>
     );
   }
 
   function img(data) {
-    // console.log(data);
+    // console.log(data.item.images);
 
+    let image = '';
+    if (data.item.images) {
+      const json_data = JSON.parse(data.item.images);
+      if (json_data[0] != undefined) {
+        image = data.item.base_url + json_data[0];
+        // console.log(image);
+      } else {
+        image = data.item.base_url + json_data[Object.keys(json_data)[0]];
+      }
+    }
+    // console.log(image);
+
+    function favorite() {
+      if (user.user_id && data.item.id) {
+        AddFav({
+          user_id: user.user_id,
+          data: data.item,
+          property_id: data.item.id,
+        }).then(res => {
+          // console.log(res);
+
+          if (res.message === 'Added to Favorite!') {
+            Alert.alert('Added sucessfully');
+            console.log(data.item.id);
+          }
+          if (res.message === 'Removed to Favorite!') {
+            Alert.alert('Removed sucessfully');
+          }
+        });
+      }
+    }
+
+    function pressHandler() {
+      navigation.navigate('Detail', {id: data.item.id, user_id: user.user_id});
+    }
     return (
       <View>
         <View style={styles.test1}>
+          <Pressable onPress={pressHandler}>
+            <Image
+              style={{width: 300, height: 300}}
+              resizeMode="cover"
+              source={{
+                uri: image,
+              }}
+            />
+          </Pressable>
           <Icon
+            onPress={favorite}
             style={{
               position: 'absolute',
               top: 5,
-              right: 5,
+              right: 10,
+              color: '#fce517',
             }}
-            name="bookmark-outline"
-            size={25}
-          />
-          <Image
-            resizeMode="center"
-            source={require('../testimage/test3.jpg')}
+            name={'heart-outline'}
+            size={30}
           />
         </View>
         <View style={styles.address}>
@@ -81,28 +143,37 @@ function Dashboard() {
             ]}>
             <Rating
               type="star"
+              readonly={true}
+              startingValue={5}
               ratingCount={5}
               imageSize={18}
-              // tintColor="red"
             />
             <View>
-              {/* <Text style={styles.addtext}>Posted-date</Text> */}
               <Text style={styles.addtext}>{ISTDate}</Text>
             </View>
           </View>
-          <Text style={[styles.addtext, {fontSize: 18}]}>title</Text>
-          <Text style={styles.addtext}>address</Text>
+          <Text style={[styles.addtext, {fontSize: 16}]}>
+            {data.item.title}
+          </Text>
+          <Text style={styles.addtext}>{data.item.address}</Text>
           <Text style={styles.addtext}>price</Text>
         </View>
       </View>
     );
   }
+  // console.log(text);
 
   function onChangeText(data) {
+    console.log(text.length === 2);
     settext(data);
+    if (text.length === 2) {
+      navigation.navigate('Location', {name: text});
+    }
   }
 
-  return (
+  return isLoggedin == false ? (
+    <Loader />
+  ) : (
     <ScrollView style={{backgroundColor: 'white'}}>
       <View style={styles.textinput1}>
         <TextInput
@@ -116,18 +187,15 @@ function Dashboard() {
       </View>
       <View>
         <FlatList
-          // maxToRenderPerBatch={10}
           horizontal={true}
-          data={image}
+          data={apiData.metro_city}
           keyExtractor={item => item.key}
           renderItem={locationbar}></FlatList>
       </View>
       <View style={styles.screen}>
-        <Text style={styles.text}>Picked Location</Text>
+        <Text style={styles.text}>Premium Location</Text>
         <FlatList
-          // maxToRenderPerBatch={6}
-          // initialNumToRender={5}
-          data={image}
+          data={apiData.popular}
           keyExtractor={item => item.key}
           renderItem={img}
           horizontal={true}
@@ -135,20 +203,10 @@ function Dashboard() {
       </View>
 
       <View style={styles.screen}>
-        <Text style={styles.text}>Favroite Location</Text>
+        <Text style={styles.text}>Popular Location</Text>
 
         <FlatList
-          data={image}
-          keyExtractor={item => item.key}
-          renderItem={img}
-          horizontal={true}
-          // initialNumToRender={5}
-        />
-      </View>
-      <View style={styles.screen}>
-        <Text style={styles.text}>Property</Text>
-        <FlatList
-          data={image}
+          data={apiData.premium}
           keyExtractor={item => item.key}
           renderItem={img}
           horizontal={true}
@@ -165,7 +223,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'flex-start',
     backgroundColor: 'white',
-    marginBottom: 50,
+    marginBottom: 40,
   },
   test1: {
     flex: 1,
@@ -180,6 +238,7 @@ const styles = StyleSheet.create({
     height: 150,
     overflow: 'hidden',
     marginLeft: 15,
+    marginRight: 10,
   },
 
   text: {
@@ -205,11 +264,10 @@ const styles = StyleSheet.create({
   circle: {
     width: 60,
     height: 60,
-    resizeMode: 'cover',
     borderRadius: 60 / 2,
     marginTop: 15,
     marginHorizontal: 10,
-    backgroundColor: '#faf8e3',
+    backgroundColor: '#f7f6f0',
   },
   locationbar: {
     marginBottom: 50,
@@ -229,6 +287,5 @@ const styles = StyleSheet.create({
   addtext: {
     justifyContent: 'flex-start',
     alignItems: 'flex-start',
-    fontSize: 12,
   },
 });

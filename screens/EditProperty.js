@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useCallback, useState} from 'react';
 import {
   View,
   StyleSheet,
@@ -6,14 +6,13 @@ import {
   Button,
   Text,
   TextInput,
-  Alert,
-  Pressable,
   Image,
+  Alert,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  AddProperty,
   Aminities,
   Categories,
   CityList,
@@ -21,65 +20,83 @@ import {
   Features,
   StateList,
 } from '../utility/database';
+import {UpdateProperty} from '../utility/database';
 import SelectDropdown from 'react-native-select-dropdown';
+import {MultipleSelectList} from 'react-native-dropdown-select-list';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import {CameraPermission} from '../utility/location';
-import {
-  SelectList,
-  MultipleSelectList,
-} from 'react-native-dropdown-select-list';
-import Icon from 'react-native-vector-icons/Ionicons';
 import {Loader} from '../utility/loader';
+import Icon from 'react-native-vector-icons/Ionicons';
+function Edit({navigation, route}) {
+  console.log(route.params);
+  const myimg = JSON.parse(route.params.data.images);
 
-function Nearby() {
   const [id, setid] = useState('');
-  const [Cid, setCid] = useState('');
   const [country, setcountry] = useState([]);
   const [state, setstate] = useState([]);
   const [city, setcity] = useState([]);
   const [feature, setfeature] = useState([]);
   const [aminity, setaminity] = useState([]);
   const [category, setcategory] = useState([]);
-  const [images, setImages] = useState([]);
   const [select, setSelected] = useState([]);
   const [select1, setSelected1] = useState([]);
-  const [loading, setloading] = useState(false);
   const [select2, setSelected2] = useState([]);
-  // console.log(Object.values(aminity).map(i => i.name));
-  // console.log(select);
-  // console.log(images);
+  const [images, setImages] = useState([]);
+  const [sendimg, setsendimg] = useState([]);
+  const [loading, setloading] = useState(false);
+  // console.log(category);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const wait = timeout => {
+    return new Promise(resolve => setTimeout(resolve, timeout));
+  };
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    wait(2000).then(() => setRefreshing(false));
+  }, []);
+
+  // console.log('id', images);
   const [input, setinput] = useState({
-    // imageUri: '',
-    title: '',
-    short_description: '',
-    country: '',
-    state: '',
-    city: '',
-    property_location: '',
-    pincode: '',
-    latitude: '',
-    longitude: '',
-    bedrooms: '',
-    bathrooms: '',
-    floor: '',
-    area: '',
-    amenities: '',
-    video_url: '',
-    walkthrough_url: '',
-    status: '',
-    category1: '',
-    feature1: '',
+    title: route.params.data.title,
+    short_description: route.params.data.short_description,
+    country: route.params.data.country,
+    state: route.params.data.state,
+    city: route.params.data.city,
+    property_location: route.params.data.address,
+    pincode: route.params.data.pincode
+      ? route.params.data.pincode.toString()
+      : route.params.data.pincode,
+    latitude: route.params.data.latitude,
+    longitude: route.params.data.longitude,
+    bedrooms: route.params.data.bedroom
+      ? route.params.data.bedroom.toString()
+      : route.params.data.bedroom,
+    bathrooms: route.params.data.bathroom
+      ? route.params.data.bathroom.toString()
+      : route.params.data.bathroom,
+    floor: route.params.data.floor
+      ? route.params.data.floor.toString()
+      : route.params.data.floor,
+    area: route.params.data.sq_ft
+      ? route.params.data.sq_ft.toString()
+      : route.params.data.sq_ft,
+    amenities: route.params.data.aminity,
+    video_url: route.params.data.title,
+    walkthrough_url: route.params.data.walkthrough_url,
+    status: route.params.data.status,
+    category1: route.params.data.category,
+    feature1: route.params.data.is_featured,
+    created_by: route.params.data.users.id,
   });
   // console.log(input);
-
   function launchCam() {
     CameraPermission();
     launchCamera().then(res => {
       console.log(res.assets[0]['fileName']);
-      // setinput({imageUri: res.assets[0].uri});
       res.assets[0].name = res.assets[0].fileName;
-      setImages([...images, res.assets[0]]);
+
+      setImages([...images, res.assets[0].uri]);
+      setsendimg([res.assets[0]]);
     });
   }
 
@@ -93,27 +110,68 @@ function Nearby() {
       });
     });
   }
+  function update() {
+    let data = {
+      title: input.title,
+      // short_description: input.short_description,
+      country_id: input.country,
+      state_id: input.state,
+      city_id: input.city,
+      address: input.property_location,
+      pincode: parseInt(input.pincode),
+      bedroom: parseInt(input.bedrooms),
+      bathroom: parseInt(input.bathrooms),
+      floor: parseInt(input.floor),
+      sq_ft: parseInt(input.area),
+      youtube: input.video_url,
+      walkthrough_url: input.walkthrough_url,
+      created_by: parseInt(input.created_by),
+    };
+    // console.log('11', data);
+
+    let d = new FormData();
+    Object.keys(data).forEach(x => {
+      d.append(x, data[x]);
+    });
+
+    if (sendimg.length) {
+      sendimg.forEach(x => {
+        console.log('d', x);
+
+        d.append('images[]', x);
+      });
+    }
+
+    UpdateProperty(route.params.data.id, d).then(res => {
+      console.log(res);
+      // console.log(Object.values(res.errors)[0][0]);
+      if (res.status) {
+        Alert.alert(`${res.message}`);
+      } else {
+        Alert.alert(`${Object.values(res.errors)[0][0]}`);
+      }
+    });
+  }
 
   useEffect(() => {
+    setImages(myimg);
     CountryList().then(res => {
       setloading(true);
-      if (res.status) {
+      if (res?.status) {
         setcountry(res.data);
       }
       setloading(false);
     });
     StateList().then(res => {
       setloading(true);
-      if (res.status) {
-        // console.log(Object.entries(res));
+      if (res?.status) {
         setstate(res.data);
       }
       setloading(false);
     });
-
     CityList().then(res => {
       setloading(true);
-      if (res.status) {
+      if (res?.status) {
         // console.log(a);
         setcity(res.data);
       }
@@ -121,34 +179,36 @@ function Nearby() {
     });
     Aminities().then(res => {
       setloading(true);
-      if (res.status) {
+      if (res?.status) {
         setaminity(res.data);
       }
       setloading(false);
     });
     Features().then(res => {
       setloading(true);
-      if (res.status) {
+      if (res?.status) {
         setfeature(res.data);
       }
       setloading(false);
     });
     Categories().then(res => {
       setloading(true);
-      if (res.status) {
+      console.log(res);
+      if (res?.status) {
         setcategory(res.data);
       }
       setloading(false);
     });
 
-    AsyncStorage.getItem('user').then(res => setid(res));
+    AsyncStorage.getItem('user').then(res => res);
   }, []);
 
-  function myimageHandler(data) {
-    // console.log(data);
+  function myimageHandler({item}) {
+    const base_url = route.params.data.base_url;
+    // console.log(base_url);
+    console.log('34', item);
     function deleteimgHandler() {
-      // console.log(data.item.fileName);
-      const a = images.find(i => i.fileName === data.item.fileName);
+      const a = images.find(i => i.fileName === item.fileName);
       console.log(!!a);
       if (!!a) {
         images.pop(a);
@@ -156,75 +216,34 @@ function Nearby() {
         setImages([]);
       }
     }
-    // console.log(data.item.uri);
 
     return (
-      <View>
+      <View style={{overflow: 'hidden'}}>
         <Image
           resizeMode="cover"
-          source={{uri: data.item.uri}}
+          source={{uri: item.includes('properties') ? base_url + item : item}}
           style={{
-            flexDirection: 'row',
-            width: 300,
+            borderRadius: 10,
+            borderWidth: 0.1,
+            borderColor: '#ffffff',
+            width: 307,
             height: 200,
+            display: images.length ? 'flex' : 'none',
           }}
         />
         <Icon
           onPress={deleteimgHandler}
-          name="close"
+          name="close-outline"
           size={30}
-          style={{position: 'absolute', left: 260}}
-          color="red"
+          style={{
+            position: 'absolute',
+
+            left: 260,
+          }}
+          color="yellow"
         />
       </View>
     );
-  }
-
-  function addprop() {
-    let data = {
-      title: input.title,
-      short_description: input.short_description,
-      country_id: input.country,
-      state_id: input.state,
-      city_id: input.city,
-      address: input.property_location,
-      pincode: parseInt(input.pincode),
-      latitude: parseInt(input.latitude),
-      longitude: parseInt(input.longitude),
-      bedroom: parseInt(input.bedrooms),
-      bathroom: parseInt(input.bathrooms),
-      floor: parseInt(input.floor),
-      sq_ft: parseInt(input.area),
-      youtube: input.video_url,
-      // Aminities: input.amenities,
-      // category: input.category1,
-      // feature: input.feature1,
-      walkthrough_url: input.walkthrough_url,
-      created_by: parseInt(id),
-    };
-    let d = new FormData();
-    Object.keys(data).forEach(x => {
-      d.append(x, data[x]);
-    });
-
-    if (images.length) {
-      images.forEach(x => {
-        console.log(x);
-
-        d.append('images[]', x);
-      });
-    }
-
-    AddProperty(d).then(res => {
-      console.log(res);
-
-      if (res.status) {
-        console.log('12', res);
-        Alert.alert(`${res.message}`);
-      } else {
-        Alert.alert(`${Object.values(res.errors)[0][0]}`);
-      }
-    });
   }
   return loading ? (
     <View>
@@ -232,7 +251,22 @@ function Nearby() {
     </View>
   ) : (
     <>
+      <View>
+        <Image
+          style={{
+            height: 55,
+            alignSelf: 'center',
+            backgroundColor: '#ffe65c',
+          }}
+          resizeMode="center"
+          source={require('../testimage/logoms.png')}
+          s
+        />
+      </View>
       <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         style={{
           backgroundColor: '#ffffff',
           marginHorizontal: 10,
@@ -249,80 +283,29 @@ function Nearby() {
             <View>
               <Text style={styles.text}>Title</Text>
               <TextInput
-                keyboardType="ascii-capable"
                 onChangeText={i => setinput({...input, title: i})}
                 placeholder="Title"
                 style={styles.TextInput}
-                // value={route.params?.data.title}
+                value={input.title}
               />
 
               <Text style={styles.text}>Short description</Text>
               <TextInput
-                keyboardType="ascii-capable"
                 multiline={true}
-                OfLines={5}
+                numberOfLines={5}
                 onChangeText={i => setinput({...input, short_description: i})}
                 // placeholder="Short description"
                 style={[styles.TextInput, {height: 120}]}
+                value={input.short_description}
               />
               <Text style={styles.text}>Add Image</Text>
-              <View style={[styles.image, {flexDirection: 'row'}]}>
-                <Image
-                  resizeMode="cover"
-                  source={{uri: 'No Image'}}
-                  style={{
-                    width: 300,
-                    height: 200,
-                    display: images.length ? 'none' : 'flex',
-                  }}
+              <View style={styles.image}>
+                <FlatList
+                  pagingEnabled={true}
+                  horizontal={true}
+                  data={images}
+                  renderItem={myimageHandler}
                 />
-                {/* <Icon
-                  name="close"
-                  size={40}
-                  style={{
-                    justifyContent: 'center',
-                    position: 'absolute',
-                    left: 230,
-                    top: 100,
-                  }}
-                /> */}
-                <View style={styles.image}>
-                  <FlatList
-                    // pagingEnabled={true}
-                    horizontal={true}
-                    data={images}
-                    renderItem={myimageHandler}
-                  />
-                </View>
-                {/* {images.map(x => {
-                  return (
-                    <>
-                      <View>
-                        <Image
-                          resizeMode="cover"
-                          source={{uri: x.uri}}
-                          style={{
-                            flexDirection: 'row',
-                            width: 200,
-                            height: 200,
-                          }}
-                        />
-                        {/* <Pressable onPress={deleteimgHandler}> */}
-                {/* <Icon
-                          onPress={deleteimgHandler}
-                          name="close"
-                          size={40}
-                          style={{
-                            color: 'red',
-                            position: 'absolute',
-                            left: 160,
-                          }}
-                        />
-                        {/* </Pressable> */}
-                {/* </View> */}
-                {/* </> */}
-                {/* ); */}
-                {/* })} */}
               </View>
               <View
                 style={{flexDirection: 'row', justifyContent: 'space-evenly'}}>
@@ -334,18 +317,11 @@ function Nearby() {
                 />
               </View>
               <Text style={styles.text}>Country</Text>
-              {/* <SelectList
-                onSelect={i => setinput({...input, country: select})}
-                search={true}
-                setSelected={val => setSelected(val)}
-                data={Object.values(country).map(i => i.name)}
-                save="value"
-              /> */}
               <SelectDropdown
                 searchPlaceHolder="country"
                 search={true}
                 buttonStyle={{width: 315, height: 50}}
-                defaultButtonText="Country"
+                defaultButtonText={`${input.country}`}
                 data={country}
                 onSelect={selectedItem => {
                   setinput({...input, country: selectedItem.name});
@@ -359,22 +335,15 @@ function Nearby() {
                 }}
               />
               <Text style={styles.text}>State</Text>
-              {/* <SelectList
-                onSelect={i => setinput({...input, state: select})}
-                search={true}
-                setSelected={val => setSelected(val)}
-                data={Object.values(state).map(i => i.name)}
-                save="value"
-              /> */}
               <SelectDropdown
                 searchPlaceHolder="State"
                 search={true}
                 buttonStyle={{width: 315, height: 50}}
-                defaultButtonText="State"
+                defaultButtonText={`${input.state}`}
                 data={state}
                 onSelect={selectedItem => {
                   setinput({...input, state: selectedItem.name});
-                  setCid(selectedItem.id);
+                  setid(selectedItem.id);
                   console.log(selectedItem.id);
                 }}
                 buttonTextAfterSelection={(selectedItem, index) => {
@@ -385,19 +354,12 @@ function Nearby() {
                 }}
               />
               <Text style={styles.text}>City</Text>
-              {/* <SelectList
-                onSelect={i => setinput({...input, city: select})}
-                search={true}
-                setSelected={val => setSelected(val)}
-                data={Object.values(state).map(i => i.name)}
-                save="value"
-              /> */}
+
               <SelectDropdown
-                // onChangeSearchInputText={citysearch}
                 searchPlaceHolder="City"
                 search={true}
                 buttonStyle={{width: 315, height: 50}}
-                defaultButtonText="City"
+                defaultButtonText={`${input.city}`}
                 data={city}
                 onSelect={selectedItem => {
                   setinput({...input, city: selectedItem.name});
@@ -410,62 +372,111 @@ function Nearby() {
                   return index, item.name;
                 }}
               />
-              {/* <MultipleSelectList
-                onSelect={() => alert(select)}
-                data={Object.values(aminity).map(i => i.name)}
-                save="value"
-                setSelected={val => setSelected(val)}
-              /> */}
               <Text style={styles.text}>Categories</Text>
               <MultipleSelectList
                 onSelect={() => {
                   setinput({...input, category1: select});
                 }}
-                data={Object.values(category).map(i => i.name)}
+                data={category.map(i => i.name)}
                 save="value"
                 setSelected={val => setSelected(val)}
               />
+              {/* <SelectDropdown
+                searchPlaceHolder="Categories"
+                search={true}
+                buttonStyle={{width: 315, height: 50}}
+                defaultButtonText="Categories"
+                data={category}
+                onSelect={selectedItem => {
+                  setinput({...input, category1: selectedItem.name});
+                  console.log(selectedItem);
+                }}
+                buttonTextAfterSelection={(selectedItem, index) => {
+                  return selectedItem.name;
+                }}
+                rowTextForSelection={item => {
+                  return item.name;
+                }}
+              /> */}
               <Text style={styles.text}>Amenities</Text>
               <MultipleSelectList
                 onSelect={() => {
                   setinput({...input, amenities: select1});
                 }}
-                data={Object.values(aminity).map(i => i.name)}
+                data={aminity.map(i => i.name)}
                 save="value"
                 setSelected={val => setSelected1(val)}
               />
+
+              {/* <SelectDropdown
+                searchPlaceHolder="Amenities"
+                search={true}
+                buttonStyle={{width: 315, height: 50}}
+                defaultButtonText="Amenities"
+                data={aminity}
+                onSelect={selectedItem => {
+                  setinput({...input, amenities: selectedItem.name});
+                  console.log(selectedItem);
+                }}
+                buttonTextAfterSelection={(selectedItem, index) => {
+                  return selectedItem.name;
+                }}
+                rowTextForSelection={item => {
+                  return item.name;
+                }}
+              /> */}
               <Text style={styles.text}>Feature</Text>
               <MultipleSelectList
                 onSelect={() => {
                   setinput({...input, feature1: select2});
                 }}
-                data={Object.values(feature).map(i => i.name)}
+                data={feature.map(i => i.name)}
                 save="value"
                 setSelected={val => setSelected2(val)}
               />
+              {/* <SelectDropdown
+                // defaultValue={}
+                searchPlaceHolder="Feature"
+                search={true}
+                buttonStyle={{width: 315, height: 50}}
+                defaultButtonText="Feature"
+                data={feature}
+                onSelect={selectedItem => {
+                  setinput({...input, feature1: selectedItem.name});
+                  console.log(selectedItem);
+                }}
+                buttonTextAfterSelection={(selectedItem, index) => {
+                  return selectedItem.name;
+                }}
+                rowTextForSelection={item => {
+                  return item.name;
+                }}
+              /> */}
+
               <Text style={styles.text}>Property Location</Text>
               <TextInput
                 onChangeText={i => setinput({...input, property_location: i})}
                 placeholder="Property Location"
                 style={styles.TextInput}
+                value={input.property_location}
               />
 
               <Text style={styles.text}>Pincode</Text>
               <TextInput
-                keyboardType="number-pad"
                 onChangeText={i => setinput({...input, pincode: i})}
                 style={styles.TextInput}
+                value={input.pincode}
                 placeholder="Pincode"></TextInput>
               <Text style={styles.text}>Latitude</Text>
               <TextInput
-                keyboardType="number-pad"
+                value={input.latitude}
                 onChangeText={i => setinput({...input, latitude: i})}
                 placeholder="Latitude"
                 style={styles.TextInput}
               />
               <Text style={styles.text}>Longitude</Text>
               <TextInput
-                keyboardType="number-pad"
+                value={input.longitude}
                 onChangeText={i => setinput({...input, longitude: i})}
                 placeholder="Longitude"
                 style={styles.TextInput}
@@ -473,36 +484,37 @@ function Nearby() {
 
               <Text style={styles.text}>Bedrooms</Text>
               <TextInput
-                keyboardType="number-pad"
+                value={input.bedrooms}
                 onChangeText={i => setinput({...input, bedrooms: i})}
                 placeholder="Bedrooms"
                 style={styles.TextInput}
               />
               <Text style={styles.text}>Bathrooms</Text>
               <TextInput
-                keyboardType="number-pad"
+                dataDetectorTypes={'all'}
+                value={input.bathrooms}
                 onChangeText={i => setinput({...input, bathrooms: i})}
                 placeholder="Bathrooms"
                 style={styles.TextInput}
               />
               <Text style={styles.text}>Floors</Text>
               <TextInput
-                keyboardType="number-pad"
+                value={input.floor}
                 onChangeText={i => setinput({...input, floor: i})}
                 placeholder="Floors"
                 style={styles.TextInput}
               />
               <Text style={styles.text}>Area</Text>
               <TextInput
-                keyboardType="number-pad"
+                value={input.area}
                 onChangeText={i => setinput({...input, area: i})}
                 placeholder="Sq_ft"
                 style={styles.TextInput}
               />
 
-              {/* <DropDownPicker multiple={true} min={0} max={5} /> */}
               <Text style={styles.text}>Video url</Text>
               <TextInput
+                value={input.title}
                 onChangeText={i => setinput({...input, video_url: i})}
                 placeholder="Url"
                 style={styles.TextInput}
@@ -510,6 +522,7 @@ function Nearby() {
 
               <Text style={styles.text}>360 Walkthrough url</Text>
               <TextInput
+                value={input.walkthrough_url}
                 onChangeText={i => setinput({...input, walkthrough_url: i})}
                 placeholder="Walkthrough"
                 style={styles.TextInput}
@@ -517,6 +530,7 @@ function Nearby() {
 
               <Text style={styles.text}>Status</Text>
               <TextInput
+                value={input.status}
                 onChangeText={i => setinput({...input, status: i})}
                 placeholder="Status"
                 style={styles.TextInput}
@@ -527,27 +541,20 @@ function Nearby() {
                   margin: 10,
                   padding: 20,
                 }}>
-                <Button onPress={addprop} title="AddProperty" color="#ffe65c" />
+                <Button
+                  onPress={update}
+                  title="UpdateProperty"
+                  color="#ffe65c"
+                />
               </View>
             </View>
           </View>
         </View>
-        {/* <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            marginBottom: 20,
-            justifyContent: 'flex-end',
-          }}>
-          <Pressable>
-            <Button onPress={add} title="add property"></Button>
-          </Pressable>
-        </View> */}
       </ScrollView>
     </>
   );
 }
-export default Nearby;
+export default Edit;
 
 const styles = StyleSheet.create({
   root: {
@@ -569,13 +576,12 @@ const styles = StyleSheet.create({
     margin: 5,
     justifyContent: 'center',
     // height: 200,
-    borderRadius: 3,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: 'white',
-    overflow: 'hidden',
     elevation: 4,
     marginBottom: 10,
-    backgroundColor: '#f1f0f0',
+    backgroundColor: '#cccccc',
   },
   button: {flexDirection: 'row', justifyContent: 'space-evenly'},
   text: {
